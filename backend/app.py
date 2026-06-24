@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
 BASE_DIR = Path(__file__).resolve().parent
+TFLITE_MODEL_PATH = BASE_DIR / "waste_classifier_fp16.tflite"
 DEFAULT_MODEL_PATH = BASE_DIR / "waste_classifier.keras"
 LEGACY_MODEL_PATH = BASE_DIR / "best_model.keras"
 IMAGE_SIZE = (224, 224)
@@ -42,6 +43,9 @@ def _resolve_model_path() -> Path:
         if candidate.exists():
             return candidate
 
+    if TFLITE_MODEL_PATH.exists():
+        return TFLITE_MODEL_PATH
+
     if DEFAULT_MODEL_PATH.exists():
         return DEFAULT_MODEL_PATH
 
@@ -49,12 +53,47 @@ def _resolve_model_path() -> Path:
         return LEGACY_MODEL_PATH
 
     raise FileNotFoundError(
-        "Could not find waste_classifier.keras in backend/ or best_model.keras in the project root."
+        "Could not find waste_classifier_fp16.tflite, waste_classifier.keras, or best_model.keras in backend/."
     )
 
 
 MODEL_PATH = _resolve_model_path()
-model = tf.keras.models.load_model(MODEL_PATH)
+
+
+def _load_model(path: Path):
+    if path.suffix == ".tflite":
+        interpreter = tf.lite.Interpreter(model_path=str(path))
+        interpreter.allocate_tensors()
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+        return {
+            "type": "tflite",
+            "interpreter": interpreter,
+            "input_details": input_details,
+            "output_details": output_details,
+        }
+
+    keras_model = tf.keras.models.load_model(path)
+    return {"type": "keras", "model": keras_model}
+
+
+LOADED_MODEL = _load_model(MODEL_PATH)
+
+
+def _predict(processed_image: np.ndarray) -> np.ndarray:
+    if LOADED_MODEL["type"] == "keras":
+        return LOADED_MODEL["model"].predict(processed_image, verbose=0)
+
+    interpreter = LOADED_MODEL["interpreter"]
+    input_details = LOADED_MODEL["input_details"]
+    output_details = LOADED_MODEL["output_details"]
+
+    # TFLite input tensors can be float16 or float32 depending on conversion settings.
+    model_input = processed_image.astype(input_details[0]["dtype"])
+    interpreter.set_tensor(input_details[0]["index"], model_input)
+    interpreter.invoke()
+    prediction = interpreter.get_tensor(output_details[0]["index"])
+    return np.asarray(prediction, dtype=np.float32)
 
 app = FastAPI(title="WasteWise API", version="1.0.0")
 app.add_middleware(
@@ -109,7 +148,7 @@ async def predict(file: UploadFile = File(...)) -> dict[str, float | str]:
     except OSError as exc:
         raise HTTPException(status_code=400, detail="Could not process the uploaded image.") from exc
 
-    prediction = model.predict(processed_image, verbose=0)
+    prediction = _predict(processed_image)
 
     if prediction.ndim == 2 and prediction.shape[-1] == 1:
         recyclable_probability = float(prediction[0][0])
