@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+
+# Node / Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.vite/
+dist/
+
+# Backend runtime files
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs / temp
+*.log
+*.tmp
+*.swp
