@@ -21,6 +21,8 @@ dist/
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+backend/waste_classifier.keras
+
 # OS / editors
 .DS_Store
 Thumbs.db
