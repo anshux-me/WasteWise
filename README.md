@@ -67,7 +67,6 @@ uvicorn app:app --reload --port 8000
 
 Backend environment variables:
 
-- `MODEL_PATH` - optional override for the model file path
 - `CORS_ORIGINS` - comma-separated list of allowed frontend origins
 
 Example local defaults:
@@ -157,7 +156,6 @@ Add screenshots here after deployment:
 2. Point it to this repository.
 3. Set the service root directory to `backend`.
 4. Add environment variables as needed:
-   - `MODEL_PATH=/opt/render/project/src/backend/waste_classifier.keras`
    - `CORS_ORIGINS=https://your-vercel-domain.vercel.app`
 5. Use this start command:
 

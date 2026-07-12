@@ -1,6 +1,6 @@
 // API Configuration
-// Backend API runs on port 5000, Frontend runs on port 5173
-const API_BASE_URL = 'http://127.0.0.1:5000';
+// Use VITE_API_URL if defined (for production), otherwise use the current host (for local dev)
+const API_BASE_URL = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8000`;
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');

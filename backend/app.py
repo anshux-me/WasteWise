@@ -12,9 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
 BASE_DIR = Path(__file__).resolve().parent
-TFLITE_MODEL_PATH = BASE_DIR / "waste_classifier_fp16.tflite"
-DEFAULT_MODEL_PATH = BASE_DIR / "waste_classifier.keras"
-LEGACY_MODEL_PATH = BASE_DIR / "best_model.keras"
+MODEL_PATH = BASE_DIR / "waste_classifier.keras"
+TFLITE_MODEL_PATH = BASE_DIR / "waste_classifier_dynamic_range.tflite"
 IMAGE_SIZE = (224, 224)
 CLASS_NAMES = ["Non-Recyclable", "Recyclable"]
 DEFAULT_ORIGINS = [
@@ -26,6 +25,8 @@ DEFAULT_ORIGINS = [
     "http://127.0.0.1:5000",
 ]
 
+LOCAL_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1|10\.(?:\d{1,3}\.){2}\d{1,3}|192\.168\.(?:\d{1,3}\.)\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?::\d+)?$"
+
 
 def _load_allowed_origins() -> List[str]:
     raw_origins = os.getenv("CORS_ORIGINS")
@@ -36,69 +37,68 @@ def _load_allowed_origins() -> List[str]:
     return cleaned or DEFAULT_ORIGINS
 
 
-def _resolve_model_path() -> Path:
-    configured_path = os.getenv("MODEL_PATH")
-    if configured_path:
-        candidate = Path(configured_path).expanduser()
-        if candidate.exists():
-            return candidate
-
-    if TFLITE_MODEL_PATH.exists():
-        return TFLITE_MODEL_PATH
-
-    if DEFAULT_MODEL_PATH.exists():
-        return DEFAULT_MODEL_PATH
-
-    if LEGACY_MODEL_PATH.exists():
-        return LEGACY_MODEL_PATH
-
-    raise FileNotFoundError(
-        "Could not find waste_classifier_fp16.tflite, waste_classifier.keras, or best_model.keras in backend/."
-    )
-
-
-MODEL_PATH = _resolve_model_path()
-
-
 def _load_model(path: Path):
-    if path.suffix == ".tflite":
-        interpreter = tf.lite.Interpreter(model_path=str(path))
-        interpreter.allocate_tensors()
-        input_details = interpreter.get_input_details()
-        output_details = interpreter.get_output_details()
+    if not path.exists():
+        raise FileNotFoundError(f"Model file not found: {path}")
+    return tf.keras.models.load_model(path)
+
+
+def _load_tflite_model(path: Path):
+    if not path.exists():
+        raise FileNotFoundError(f"Model file not found: {path}")
+
+    interpreter = tf.lite.Interpreter(model_path=str(path))
+    interpreter.allocate_tensors()
+    return interpreter
+
+
+def _load_model_safely():
+    if TFLITE_MODEL_PATH.exists():
+        try:
+            return {
+                "backend": "tflite",
+                "model": _load_tflite_model(TFLITE_MODEL_PATH),
+                "path": TFLITE_MODEL_PATH,
+                "error": None,
+            }
+        except Exception as exc:
+            tflite_error = str(exc)
+    else:
+        tflite_error = None
+
+    try:
         return {
-            "type": "tflite",
-            "interpreter": interpreter,
-            "input_details": input_details,
-            "output_details": output_details,
+            "backend": "keras",
+            "model": _load_model(MODEL_PATH),
+            "path": MODEL_PATH,
+            "error": None,
         }
+    except Exception as exc:
+        error_message = str(exc)
+        if tflite_error:
+            error_message = f"TFLite load failed: {tflite_error}; Keras load failed: {error_message}"
+        return {"backend": None, "model": None, "path": MODEL_PATH, "error": error_message}
 
-    keras_model = tf.keras.models.load_model(path)
-    return {"type": "keras", "model": keras_model}
 
-
-LOADED_MODEL = _load_model(MODEL_PATH)
+MODEL_RUNTIME = _load_model_safely()
 
 
 def _predict(processed_image: np.ndarray) -> np.ndarray:
-    if LOADED_MODEL["type"] == "keras":
-        return LOADED_MODEL["model"].predict(processed_image, verbose=0)
+    if MODEL_RUNTIME["backend"] == "tflite":
+        interpreter = MODEL_RUNTIME["model"]
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+        interpreter.set_tensor(input_details[0]["index"], processed_image.astype(np.float32))
+        interpreter.invoke()
+        return interpreter.get_tensor(output_details[0]["index"])
 
-    interpreter = LOADED_MODEL["interpreter"]
-    input_details = LOADED_MODEL["input_details"]
-    output_details = LOADED_MODEL["output_details"]
-
-    # TFLite input tensors can be float16 or float32 depending on conversion settings.
-    model_input = processed_image.astype(input_details[0]["dtype"])
-    interpreter.set_tensor(input_details[0]["index"], model_input)
-    interpreter.invoke()
-    prediction = interpreter.get_tensor(output_details[0]["index"])
-    return np.asarray(prediction, dtype=np.float32)
+    return MODEL_RUNTIME["model"].predict(processed_image, verbose=0)
 
 app = FastAPI(title="WasteWise API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_load_allowed_origins(),
+    allow_origin_regex=LOCAL_ORIGIN_REGEX,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,7 +116,8 @@ def home() -> dict[str, object]:
     return {
         "message": "WasteWise API - Waste Classification Service",
         "version": "1.0.0",
-        "model": MODEL_PATH.name,
+        "model": MODEL_RUNTIME["path"].name,
+        "backend": MODEL_RUNTIME["backend"],
         "endpoints": {
             "health": "/health",
             "predict": "/predict",
@@ -127,14 +128,25 @@ def home() -> dict[str, object]:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "healthy"}
+def health() -> dict[str, object]:
+    return {
+        "status": "healthy",
+        "model_loaded": MODEL_RUNTIME["model"] is not None,
+        "backend": MODEL_RUNTIME["backend"],
+        "model": MODEL_RUNTIME["path"].name,
+    }
 
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)) -> dict[str, float | str]:
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file was uploaded.")
+
+    if MODEL_RUNTIME["model"] is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model could not be loaded: {MODEL_RUNTIME['error']}",
+        )
 
     if file.content_type and not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image uploads are supported.")
@@ -165,3 +177,7 @@ async def predict(file: UploadFile = File(...)) -> dict[str, float | str]:
         "prediction": prediction_label,
         "confidence": round(confidence * 100, 2),
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

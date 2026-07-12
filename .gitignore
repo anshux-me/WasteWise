@@ -33,3 +33,4 @@ Thumbs.db
 *.log
 *.tmp
 *.swp
+backend/wasteenv/
