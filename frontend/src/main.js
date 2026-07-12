@@ -1,6 +1,6 @@
 // API Configuration
-// Use VITE_API_URL if defined (for production), otherwise use the current host (for local dev)
-const API_BASE_URL = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8000`;
+// Fallback to the live Render backend if VITE_API_URL is not set
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://wastewise-2-vnij.onrender.com";
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');

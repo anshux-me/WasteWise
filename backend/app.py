@@ -97,7 +97,7 @@ def _predict(processed_image: np.ndarray) -> np.ndarray:
 app = FastAPI(title="WasteWise API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_load_allowed_origins(),
+    allow_origins=["*"],
     allow_origin_regex=LOCAL_ORIGIN_REGEX,
     allow_credentials=False,
     allow_methods=["*"],
