@@ -25,6 +25,9 @@ body {
     background-color: var(--light-bg);
     color: var(--text-color);
     line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
 }
 
 body.dark-mode {
@@ -162,6 +165,7 @@ body.dark-mode .theme-toggle {
     grid-template-columns: 1fr 1fr 1fr;
     gap: 40px;
     align-items: start;
+    flex-grow: 1;
 }
 
 /* Left Section */
@@ -216,6 +220,54 @@ body.dark-mode .left-content p {
 
 .illustration svg {
     filter: drop-shadow(0 4px 8px rgba(34, 197, 94, 0.1));
+}
+
+.overline {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--gray-400);
+    margin-bottom: 8px;
+}
+
+.feature-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.feature-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.feature-item-icon {
+    flex-shrink: 0;
+    color: var(--primary-color);
+    width: 24px;
+    height: 24px;
+}
+
+.feature-item-content h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--dark);
+}
+
+body.dark-mode .feature-item-content h3 {
+    color: var(--white);
+}
+
+.feature-item-content p {
+    font-size: 14px;
+    color: var(--gray-600);
+    margin: 0;
+}
+
+body.dark-mode .feature-item-content p {
+    color: #CBD5E1;
 }
 
 /* Middle Section */
@@ -456,6 +508,7 @@ body.dark-mode .empty-state {
         opacity: 0;
         transform: translateY(10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -687,6 +740,43 @@ body.dark-mode .feature-card p {
     gap: 30px;
 }
 
+/* Rounded pill for name */
+.name-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    padding: 5px 12px;
+
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 9999px;
+
+    color: var(--white);
+    text-decoration: none;
+
+    font-size: 14px;
+    font-weight: 500;
+
+    transition: all 0.2s ease;
+}
+
+.name-pill:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.name-pill svg {
+    width: 12px;
+    height: 12px;
+    opacity: 0.7;
+    transition: transform 0.2s ease;
+}
+
+.name-pill:hover svg {
+    transform: translate(2px, -2px);
+}
+
+
 .footer-content p {
     font-size: 14px;
 }
@@ -705,6 +795,14 @@ body.dark-mode .feature-card p {
     text-decoration: none;
     font-weight: 600;
     transition: color 0.3s;
+    display: flex;
+    align-items: center;
+}
+
+.social-links a svg {
+    width: 20px;
+    height: 20px;
+    margin-right: 4px;
 }
 
 .social-links a:hover {
